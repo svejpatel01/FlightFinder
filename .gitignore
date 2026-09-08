@@ -30,8 +30,10 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*
+# env files — never commit real secrets; the example IS tracked
+.env
+.env.*
+!.env.example
 
 # vercel
 .vercel
@@ -42,5 +44,24 @@ next-env.d.ts
 
 # local database (schema + migrations are tracked; the .db file is not)
 /prisma/dev.db
-/prisma/dev.db-journal
+/prisma/*.db
+/prisma/*.db-journal
+/prisma/*.sqlite
+*.sqlite
+*.sqlite3
+
+# scratch / deploy artifacts
 /scratch
+*.tgz
+*.tar.gz
+
+# editor / OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+Thumbs.db
+
+# logs
+*.log
+logs/

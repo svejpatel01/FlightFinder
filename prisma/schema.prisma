@@ -1,0 +1,109 @@
+// FlightFinder — Prisma schema (SQLite)
+//
+// This is a single-user personal app: there is exactly one `User` row, created
+// / updated from the onboarding form. The scan job still loops "per user" so the
+// model stays trivially multi-user if that's ever wanted.
+//
+// SQLite has no native enums or array columns, so a few fields are stored as
+// short string constants ("FRI_SUN", "BUDGET", …) or JSON-encoded strings. The
+// allowed values live in lib/constants.ts.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id               String   @id @default(cuid())
+  email            String
+  budgetUsd        Float
+  weeksAhead       Int      @default(12) // how many weeks out to watch (max 26, enforced in app)
+  alertOnBudget    Boolean  @default(true)
+  alertOnPriceDrop Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  origins         Origin[]
+  destinations    WishlistDestination[]
+  weekendPatterns WeekendPattern[]
+  notifications   NotificationLog[]
+}
+
+model Origin {
+  id       String @id @default(cuid())
+  userId   String
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  iataCode String
+
+  @@unique([userId, iataCode])
+}
+
+model WishlistDestination {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // kind = "AIRPORT" -> watch the single airport/metro in `iataCode`
+  // kind = "COUNTRY" -> watch a whole country: `countryCode` is ISO-3166 alpha-2,
+  //                     expanded once into `resolvedAirports` (see below).
+  kind        String
+  iataCode    String?
+  countryCode String?
+  label       String? // human label for UI + emails, e.g. "Japan" or "London (LHR)"
+
+  // JSON-encoded string[] of IATA codes this destination expands to.
+  // AIRPORT -> just [iataCode]. COUNTRY -> major airports for that country,
+  // resolved once from lib/airports.ts and cached here (re-resolved if stale).
+  resolvedAirports String?
+  resolvedAt       DateTime?
+
+  createdAt DateTime @default(now())
+}
+
+model WeekendPattern {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // "FRI_SUN" | "SAT_SUN" | "THU_SUN" — a user may have more than one row.
+  pattern String
+
+  @@unique([userId, pattern])
+}
+
+// Price history. Not user-scoped on purpose: the rolling average is computed per
+// (origin, destination, weekendPattern) route and is shared history.
+model PriceSnapshot {
+  id             String   @id @default(cuid())
+  originIata     String
+  destIata       String
+  departDate     String // "YYYY-MM-DD" — date-only, stored as text to avoid TZ drift
+  returnDate     String // "YYYY-MM-DD"
+  weekendPattern String
+  priceUsd       Float
+  currency       String   @default("USD") // what Duffel actually returned; treated as ~USD
+  checkedAt      DateTime @default(now())
+
+  @@index([originIata, destIata, weekendPattern, checkedAt])
+}
+
+// One row per alert actually emailed. Used to avoid re-sending the same deal
+// every scan (see dedup logic in lib/scan.ts).
+model NotificationLog {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  originIata  String
+  destIata    String
+  departDate  String
+  returnDate  String
+  triggerType String // "BUDGET" | "PRICE_DROP"
+  priceUsd    Float
+  sentAt      DateTime @default(now())
+
+  @@index([userId, originIata, destIata, departDate, returnDate, triggerType, sentAt])
+}

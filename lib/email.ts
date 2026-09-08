@@ -1,0 +1,153 @@
+// Digest email formatting + sending (Resend).
+
+import { Resend } from "resend";
+import {
+  WEEKEND_PATTERN_LABELS,
+  type TriggerType,
+  type WeekendPatternKey,
+} from "./constants";
+
+export interface Deal {
+  originIata: string;
+  destIata: string;
+  originLabel: string;
+  destLabel: string;
+  departDate: string; // "YYYY-MM-DD"
+  returnDate: string; // "YYYY-MM-DD"
+  weekendPattern: WeekendPatternKey;
+  priceUsd: number;
+  currency: string;
+  triggerType: TriggerType;
+  /** rolling average at trigger time — only set for PRICE_DROP */
+  averageUsd: number | null;
+  /** e.g. 34 means "34% below average" — only set for PRICE_DROP */
+  pctBelowAvg: number | null;
+  googleFlightsUrl: string;
+}
+
+const DATE_FMT = new Intl.DateTimeFormat("en-US", {
+  weekday: "short",
+  month: "short",
+  day: "numeric",
+  timeZone: "UTC",
+});
+
+function fmtDate(iso: string): string {
+  return DATE_FMT.format(new Date(`${iso}T00:00:00Z`));
+}
+
+function dateRange(depart: string, ret: string): string {
+  const year = ret.slice(0, 4);
+  return `${fmtDate(depart)} – ${fmtDate(ret)}, ${year}`;
+}
+
+function money(n: number, currency = "USD"): string {
+  const s = `$${n.toFixed(0)}`;
+  return currency && currency !== "USD" ? `${n.toFixed(0)} ${currency}` : s;
+}
+
+function triggerBlurb(d: Deal): string {
+  if (d.triggerType === "BUDGET") return "under your budget";
+  if (d.pctBelowAvg != null && d.averageUsd != null) {
+    return `${d.pctBelowAvg}% below the recent average of ${money(d.averageUsd)}`;
+  }
+  return "below the recent average";
+}
+
+export interface Digest {
+  subject: string;
+  text: string;
+  html: string;
+}
+
+export function formatDigest(toEmail: string, deals: Deal[]): Digest {
+  const cheapest = Math.min(...deals.map((d) => d.priceUsd));
+  const n = deals.length;
+  const subject = `${n} weekend flight deal${n === 1 ? "" : "s"} — from ${money(cheapest)}`;
+
+  const textLines: string[] = [
+    `${n} matching weekend flight deal${n === 1 ? "" : "s"}:`,
+    "",
+  ];
+  for (const d of deals) {
+    textLines.push(
+      `${d.originIata} → ${d.destIata}  (${d.originLabel} → ${d.destLabel})`,
+    );
+    textLines.push(
+      `  ${dateRange(d.departDate, d.returnDate)}  ·  ${WEEKEND_PATTERN_LABELS[d.weekendPattern]}`,
+    );
+    textLines.push(
+      `  ${money(d.priceUsd, d.currency)} round-trip — ${triggerBlurb(d)}`,
+    );
+    textLines.push(`  Search: ${d.googleFlightsUrl}`);
+    textLines.push("");
+  }
+  textLines.push("— FlightFinder");
+  const text = textLines.join("\n");
+
+  const rows = deals
+    .map(
+      (d) => `
+      <tr>
+        <td style="padding:12px 0;border-top:1px solid #e5e5e5;">
+          <div style="font-size:16px;font-weight:600;">
+            ${d.originIata} &rarr; ${d.destIata}
+            <span style="font-weight:400;color:#666;">— ${escapeHtml(d.originLabel)} to ${escapeHtml(d.destLabel)}</span>
+          </div>
+          <div style="color:#444;margin:4px 0;">
+            ${dateRange(d.departDate, d.returnDate)} &middot; ${WEEKEND_PATTERN_LABELS[d.weekendPattern]}
+          </div>
+          <div style="margin:4px 0;">
+            <strong style="font-size:18px;">${money(d.priceUsd, d.currency)}</strong> round-trip
+            <span style="color:#137333;"> — ${triggerBlurb(d)}</span>
+          </div>
+          <a href="${d.googleFlightsUrl}" style="color:#1a73e8;">Search this route on Google Flights &rarr;</a>
+        </td>
+      </tr>`,
+    )
+    .join("");
+
+  const html = `
+  <div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:600px;margin:0 auto;color:#111;">
+    <h2 style="margin:0 0 4px;">${n} weekend flight deal${n === 1 ? "" : "s"}</h2>
+    <p style="color:#666;margin:0 0 12px;">Cheapest right now: <strong>${money(cheapest)}</strong></p>
+    <table style="width:100%;border-collapse:collapse;">${rows}</table>
+    <p style="color:#999;font-size:12px;margin-top:20px;border-top:1px solid #e5e5e5;padding-top:12px;">
+      Sent by FlightFinder to ${escapeHtml(toEmail)}. Prices are the cheapest economy round-trip found via Duffel search and can change at any time.
+    </p>
+  </div>`;
+
+  return { subject, text, html };
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+export class EmailConfigError extends Error {}
+
+/** Send one digest email. Throws on misconfiguration or Resend failure. */
+export async function sendDigestEmail(
+  toEmail: string,
+  deals: Deal[],
+): Promise<string | null> {
+  const key = process.env.RESEND_API_KEY;
+  if (!key) throw new EmailConfigError("RESEND_API_KEY is not set");
+  const from = process.env.EMAIL_FROM ?? "FlightFinder <onboarding@resend.dev>";
+
+  const resend = new Resend(key);
+  const { subject, text, html } = formatDigest(toEmail, deals);
+  const { data, error } = await resend.emails.send({
+    from,
+    to: [toEmail],
+    subject,
+    text,
+    html,
+  });
+  if (error) throw new Error(`Resend error: ${JSON.stringify(error)}`);
+  return data?.id ?? null;
+}

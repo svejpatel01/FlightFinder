@@ -1,0 +1,50 @@
+{
+  "name": "flightfinder",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "prisma:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:studio": "prisma studio",
+    "duffel:test": "tsx scripts/test-duffel.ts",
+    "email:test": "tsx scripts/test-email.ts",
+    "scan": "tsx scripts/run-scan.ts",
+    "cron": "tsx scripts/cron.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.16.2",
+    "dotenv": "^17.4.2",
+    "next": "16.3.4",
+    "node-cron": "^4.6.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "resend": "^6.26.0",
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.4",
+    "prisma": "^6.16.2",
+    "tsx": "^4.23.13",
+    "typescript": "^5",
+    "vitest": "^3.2.7"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true,
+    "fsevents@2.3.3": true,
+    "unrs-resolver@1.12.2": true,
+    "prisma@6.16.2": true,
+    "@prisma/client@6.16.2": true,
+    "@prisma/engines@6.16.2": true
+  }
+}

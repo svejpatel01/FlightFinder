@@ -13,8 +13,8 @@ export default async function Page() {
       <h1>FlightFinder</h1>
       <p className="sub">
         Watch cheap round-trip weekend flights between your home airports and a
-        wishlist of destinations. Get an email — or an SMS for the big ones —
-        when a fare drops below your budget or well below its recent average.
+        wishlist of destinations. Get an email when a fare drops below your
+        budget or well below its recent average.
       </p>
 
       <div className="card">
@@ -26,8 +26,8 @@ export default async function Page() {
             watch.
           </li>
           <li>
-            A scan runs every 6 hours. Noteworthy drops trigger an email/SMS; the
-            dashboard always shows the current cheapest fares.
+            A scan runs every 6 hours. Matching fares trigger an email digest;
+            the dashboard always shows the current cheapest fares.
           </li>
         </ol>
         <p style={{ marginTop: 18 }}>

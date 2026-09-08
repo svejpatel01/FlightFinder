@@ -30,10 +30,6 @@ model User {
   alertOnPriceDrop Boolean  @default(true)
   scanEnabled      Boolean  @default(true) // user can pause without losing config
 
-  // SMS (Twilio)
-  phone     String? // E.164, e.g. +14155551234
-  smsOptIn  Boolean @default(false)
-
   origins         Origin[]
   destinations    WishlistDestination[]
   weekendPatterns WeekendPattern[]

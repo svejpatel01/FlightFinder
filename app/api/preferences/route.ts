@@ -22,13 +22,6 @@ const destinationSchema = z
 
 const bodySchema = z.object({
   name: z.string().trim().max(80).optional(),
-  phone: z
-    .string()
-    .trim()
-    .regex(/^\+[1-9]\d{6,14}$/, "Use E.164 format, e.g. +14155551234")
-    .optional()
-    .or(z.literal("")),
-  smsOptIn: z.boolean(),
   budgetUsd: z.number().positive().max(100_000),
   weeksAhead: z.number().int().min(1).max(MAX_WEEKS_AHEAD),
   alertOnBudget: z.boolean(),
@@ -68,18 +61,10 @@ export async function POST(request: Request) {
   if (!data.alertOnBudget && !data.alertOnPriceDrop) {
     return Response.json({ error: "Enable at least one alert type" }, { status: 422 });
   }
-  if (data.smsOptIn && !data.phone) {
-    return Response.json(
-      { error: "Add a phone number to enable SMS alerts" },
-      { status: 422 },
-    );
-  }
 
   try {
     await savePreferences(user.id, {
       name: data.name,
-      phone: data.phone || null,
-      smsOptIn: data.smsOptIn,
       budgetUsd: data.budgetUsd,
       weeksAhead: data.weeksAhead,
       alertOnBudget: data.alertOnBudget,

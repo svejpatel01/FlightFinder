@@ -21,8 +21,6 @@ export interface DestinationInput {
 
 export interface PreferencesInput {
   name?: string;
-  phone?: string | null;
-  smsOptIn: boolean;
   budgetUsd: number;
   weeksAhead: number;
   alertOnBudget: boolean;
@@ -35,8 +33,6 @@ export interface PreferencesInput {
 export interface PreferencesView {
   email: string;
   name: string;
-  phone: string;
-  smsOptIn: boolean;
   budgetUsd: number | null;
   weeksAhead: number;
   alertOnBudget: boolean;
@@ -77,8 +73,6 @@ export async function getPreferences(
   return {
     email: user.email,
     name: user.name ?? "",
-    phone: user.phone ?? "",
-    smsOptIn: user.smsOptIn,
     budgetUsd: user.budgetUsd || null,
     weeksAhead: user.weeksAhead,
     alertOnBudget: user.alertOnBudget,
@@ -155,8 +149,6 @@ export async function savePreferences(
       where: { id: userId },
       data: {
         name: input.name?.trim() || null,
-        phone: input.phone?.trim() || null,
-        smsOptIn: input.smsOptIn,
         budgetUsd: input.budgetUsd,
         weeksAhead: input.weeksAhead,
         alertOnBudget: input.alertOnBudget,

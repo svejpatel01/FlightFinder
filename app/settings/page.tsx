@@ -11,8 +11,6 @@ export default async function SettingsPage() {
   const preferences = (await getPreferences(user.id)) ?? {
     email: user.email,
     name: "",
-    phone: "",
-    smsOptIn: false,
     budgetUsd: null,
     weeksAhead: DEFAULT_WEEKS_AHEAD,
     alertOnBudget: true,

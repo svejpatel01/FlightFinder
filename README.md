@@ -1,17 +1,15 @@
 # FlightFinder — weekend flight deal watcher
 
 A multi-user, invite-only web app that watches cheap round-trip weekend flights
-between each user's home airports and a wishlist of destinations, and alerts them
-when a fare drops **below budget** or **well below its recent average** — by
-**email**, plus **SMS** for the biggest drops. A logged-in **dashboard** shows
-the current cheapest fares per weekend.
+between each user's home airports and a wishlist of destinations, and **emails**
+them when a fare drops **below budget** or **well below its recent average**. A
+logged-in **dashboard** shows the current cheapest fares per weekend.
 
 - **Next.js 16** (App Router, TypeScript)
 - **SQLite via Prisma** — one file, no external DB
 - **Passwordless auth** — magic link emailed via Resend (invite-only allowlist)
 - **Duffel API** — flight price search (offer requests only; never books, so it's free)
 - **Resend** — magic-link + digest email
-- **Twilio** — SMS for the noteworthy subset of deals
 - **node-cron** — one scan every 6 hours, covering all users
 
 ---
@@ -46,9 +44,6 @@ your watch. Scans run via `npm run cron` (or one-off `npm run scan`).
 | `RESEND_API_KEY` | From resend.com. Also sends the sign-in link. |
 | `EMAIL_FROM` | Until you verify a domain in Resend, `FlightFinder <onboarding@resend.dev>` — which **only delivers to your own Resend account address**. |
 | `EMAIL_MOCK` | `1` → log digest emails instead of sending. |
-| `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_FROM_NUMBER` | From twilio.com. `TWILIO_FROM_NUMBER` is E.164 (`+1...`). US SMS needs A2P 10DLC registration on Twilio's side. |
-| `SMS_MOCK` | `1` → log SMS instead of sending (default until Twilio is configured). |
-| `SMS_DROP_THRESHOLD` | SMS fires on price drops ≥ this fraction below average. Default `0.40`. |
 | `SCAN_CRON` | Scan schedule. Default `0 */6 * * *`. |
 
 ---
@@ -74,7 +69,7 @@ hashes.
 ## The Duffel rate-limit ceiling (important for multi-user)
 
 Duffel allows **60 requests/minute**, shared across *all* users (one API key).
-Each scan builds the **global unique set** of `(origin, dest, departDate,
+Each scan builds the **global unique** set of `(origin, dest, departDate,
 returnDate)` searches — two users watching the same route cost **one** call — but
 it still scales with total distinct routes × weekends. Each offer request also
 takes 5–15s of wall time.
@@ -97,15 +92,13 @@ Many users → a paid Duffel plan or a different data source.
 | `npm run invite -- <add\|remove\|list\|seed>` | Manage the allowlist |
 | `npm run duffel:test [-- ORIG DEST DEPART RETURN]` | Hit Duffel in isolation |
 | `npm run email:test -- you@example.com` | Send a sample digest |
-| `npm run sms:test -- +14155551234` | Send a sample SMS (mock unless Twilio set) |
-| `npm run scan` | One scan now (all users): prices, snapshots, email/SMS |
+| `npm run scan` | One scan now (all users): prices, snapshots, email |
 | `npm run scan -- --dry-run` | Scan with no writes / no sends |
 | `npm run cron` | Scheduler — stays running, scans every `SCAN_CRON` |
 | `npm run cron -- --run-now` | Scheduler + immediate first run |
 | `npm run db:studio` | Browse the DB |
 
-`DUFFEL_MOCK=1 EMAIL_MOCK=1 SMS_MOCK=1 npm run scan` exercises the whole
-pipeline offline.
+`DUFFEL_MOCK=1 EMAIL_MOCK=1 npm run scan` exercises the whole pipeline offline.
 
 ---
 
@@ -120,13 +113,10 @@ Each run (`lib/scan.ts`):
 4. Per user: evaluates triggers against the fresh price + rolling average:
    - **BUDGET** — `price ≤ budgetUsd`
    - **PRICE_DROP** — `price ≤ average × 0.7`, once ≥ 3 prior snapshots exist
-5. **Dedup** per user, per route+dates, per trigger, **per channel** — re-alerts
-   only if the price dropped a further 10% below the last alerted price.
-6. Sends **one email digest per user**. Sends **SMS** to users who opted in
-   (`smsOptIn` + phone) for the noteworthy subset: budget deals ≤ 80% of budget,
-   or price drops ≥ `SMS_DROP_THRESHOLD`.
-
-One user's delivery failure never aborts the scan.
+5. **Dedup** per user, per route+dates, per trigger — re-alerts only if the price
+   dropped a further 10% below the last alerted price.
+6. Sends **one email digest per user** with anything new. One user's delivery
+   failure never aborts the scan.
 
 ### Tuning (`lib/scan.ts`)
 
@@ -137,17 +127,15 @@ One user's delivery failure never aborts the scan.
 | `MIN_HISTORY_FOR_DROP` | 3 | priors required before PRICE_DROP can fire |
 | `DROP_RATIO` | 0.7 | "30%+ below average" |
 | `RENOTIFY_RATIO` | 0.9 | re-alert only if 10%+ cheaper again |
-| `SMS_BUDGET_RATIO` | 0.8 | budget deal also SMSes if ≤ 80% of budget |
 
 ---
 
 ## Data model (`prisma/schema.prisma`)
 
-`User` (auth + watch prefs + phone/SMS) · `Invite` (allowlist) · `LoginToken`
-(single-use magic link) · `Session` (cookie) · `Origin` · `WishlistDestination`
-(airport or country + cached resolved airports) · `WeekendPattern` ·
-`PriceSnapshot` (shared price history) · `NotificationLog` (per-channel dedup
-ledger).
+`User` (auth + watch prefs) · `Invite` (allowlist) · `LoginToken` (single-use
+magic link) · `Session` (cookie) · `Origin` · `WishlistDestination` (airport or
+country + cached resolved airports) · `WeekendPattern` · `PriceSnapshot` (shared
+price history) · `NotificationLog` (dedup ledger).
 
 Dates are `"YYYY-MM-DD"` text (no timezone ambiguity). Prices carry the currency
 Duffel returned, treated as ~USD.
@@ -165,6 +153,10 @@ break. See the deployment runbook you were given for the full GCP walkthrough.
 
 ## Notes
 
+- **Email to other users** requires a **verified domain in Resend** — the shared
+  `onboarding@resend.dev` sender only delivers to your own Resend account
+  address, so other users won't get magic links or digests until you set that up
+  and change `EMAIL_FROM`.
 - **Dev-only quirk:** the Turbopack dev server lazily compiles routes, so the
   *first* authenticated request to a route after an idle gap can 401 — retry
   once. Does not happen with `npm run start`.

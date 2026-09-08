@@ -47,8 +47,6 @@ export default function SettingsForm({
   );
 
   const [name, setName] = useState(initial.name ?? "");
-  const [phone, setPhone] = useState(initial.phone ?? "");
-  const [smsOptIn, setSmsOptIn] = useState(initial.smsOptIn);
 
   const [origins, setOrigins] = useState<string[]>(initial.origins);
   const [originInput, setOriginInput] = useState("");
@@ -152,15 +150,12 @@ export default function SettingsForm({
     });
   }
 
-  const phoneValid = phone === "" || /^\+[1-9]\d{6,14}$/.test(phone.trim());
   const canSubmit =
     origins.length > 0 &&
     destinations.length > 0 &&
     patterns.size > 0 &&
     (alertOnBudget || alertOnPriceDrop) &&
     Number(budget) > 0 &&
-    phoneValid &&
-    (!smsOptIn || phone.trim() !== "") &&
     !submitting;
 
   async function onSubmit(e: React.FormEvent) {
@@ -173,8 +168,6 @@ export default function SettingsForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: name.trim() || undefined,
-          phone: phone.trim(),
-          smsOptIn,
           budgetUsd: Number(budget),
           weeksAhead: Number(weeksAhead),
           alertOnBudget,
@@ -413,41 +406,9 @@ export default function SettingsForm({
             </small>
           </span>
         </label>
-
-        <div className="field" style={{ marginTop: 16 }}>
-          <label htmlFor="phone">Mobile number for SMS (optional)</label>
-          <p className="hint">
-            E.164 format, e.g. <code>+14155551234</code>. SMS is only sent for the
-            biggest drops.
-          </p>
-          <input
-            id="phone"
-            type="text"
-            placeholder="+14155551234"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-          />
-          {!phoneValid && (
-            <p className="hint" style={{ color: "var(--danger)" }}>
-              Must start with + and country code.
-            </p>
-          )}
-        </div>
-        <label className="check">
-          <input
-            type="checkbox"
-            checked={smsOptIn}
-            disabled={phone.trim() === ""}
-            onChange={(e) => setSmsOptIn(e.target.checked)}
-          />
-          <span>
-            <b>Text me the big ones</b>
-            <small>
-              SMS for budget deals well under budget and price drops of 40%+.
-              Requires a phone number.
-            </small>
-          </span>
-        </label>
+        <p className="hint" style={{ marginTop: 10 }}>
+          Alerts are sent to {initial.email} as one digest per scan.
+        </p>
       </section>
 
       <section className="card">

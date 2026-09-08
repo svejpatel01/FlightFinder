@@ -38,7 +38,7 @@ async function tick() {
         `[cron] done in ${((Date.now() - started.getTime()) / 1000).toFixed(0)}s — ` +
           `${s.configuredUsers} user(s), ${s.uniqueSearches} searches, ` +
           `${s.snapshotsWritten} snapshots, ${s.dealsMatched} deal(s), ` +
-          `${s.emailsSent} email(s), ${s.smsSent} sms`,
+          `${s.emailsSent} email(s)`,
       );
     }
   } catch (err) {

@@ -1,4 +1,4 @@
-// The scan job — now multi-user.
+// The scan job — multi-user, email alerts.
 //
 // Each run:
 //   1. loads every scan-enabled, fully-configured user
@@ -8,8 +8,8 @@
 //   3. runs those searches (throttled inside lib/duffel), writes one
 //      PriceSnapshot each
 //   4. per user: evaluates BUDGET / PRICE_DROP triggers against the fresh
-//      prices + rolling average, dedups per channel
-//   5. sends one email digest per user; sends SMS to the noteworthy subset
+//      prices + rolling average, dedups against NotificationLog
+//   5. sends one email digest per user with anything new
 
 import { prisma } from "./db";
 import { generateWeekendDatePairs } from "./weekends";
@@ -18,12 +18,10 @@ import { googleFlightsUrl } from "./googleFlights";
 import { getAirport, airportsForCountry } from "./airports";
 import {
   isWeekendPattern,
-  type NotifyChannel,
   type TriggerType,
   type WeekendPatternKey,
 } from "./constants";
 import { sendDigestEmail, type Deal } from "./email";
-import { sendDealSms } from "./sms";
 
 // --- "How much history is enough" ---------------------------------------
 const HISTORY_WINDOW_DAYS = 45;
@@ -32,10 +30,6 @@ const MIN_HISTORY_FOR_DROP = 3;
 const DROP_RATIO = 0.7; // "30%+ below average"
 const RENOTIFY_RATIO = 0.9; // re-alert only if a further 10% cheaper
 const COUNTRY_CACHE_TTL_DAYS = 30;
-
-// SMS is intrusive — only the best deals get one.
-const SMS_DROP_THRESHOLD = Number(process.env.SMS_DROP_THRESHOLD ?? 0.4);
-const SMS_BUDGET_RATIO = 0.8; // BUDGET deal also SMSes if <= 80% of budget
 
 const DAY_MS = 86_400_000;
 
@@ -50,7 +44,6 @@ export interface ScanUserResult {
   email: string;
   dealsMatched: number;
   emailSent: boolean;
-  smsSent: boolean;
 }
 
 export interface ScanSummary {
@@ -63,7 +56,6 @@ export interface ScanSummary {
   snapshotsWritten: number;
   dealsMatched: number;
   emailsSent: number;
-  smsSent: number;
   perUser: ScanUserResult[];
 }
 
@@ -74,8 +66,6 @@ interface Task {
   returnDate: string;
   weekendPattern: WeekendPatternKey;
 }
-
-type DealPlus = Deal & { channels: NotifyChannel[] };
 
 function log(opts: ScanOptions, ...args: unknown[]) {
   if (opts.verbose) console.log("[scan]", ...args);
@@ -135,11 +125,11 @@ async function resolveDestinations(
   return [...out];
 }
 
+/** Should we actually send this (user, route, dates, trigger) alert now? */
 async function passesDedup(
   userId: string,
   t: Task,
   triggerType: TriggerType,
-  channel: NotifyChannel,
   price: number,
 ): Promise<boolean> {
   const last = await prisma.notificationLog.findFirst({
@@ -150,7 +140,6 @@ async function passesDedup(
       departDate: t.departDate,
       returnDate: t.returnDate,
       triggerType,
-      channel,
     },
     orderBy: { sentAt: "desc" },
   });
@@ -166,7 +155,6 @@ const EMPTY: Omit<ScanSummary, "ranAt" | "skipped"> = {
   snapshotsWritten: 0,
   dealsMatched: 0,
   emailsSent: 0,
-  smsSent: 0,
   perUser: [],
 };
 
@@ -217,10 +205,7 @@ export async function runScan(opts: ScanOptions = {}): Promise<ScanSummary> {
             weekendPattern: p.weekendPattern,
           };
           tasks.push(t);
-          globalTasks.set(
-            taskKey(origin, dest, p.departDate, p.returnDate),
-            t,
-          );
+          globalTasks.set(taskKey(origin, dest, p.departDate, p.returnDate), t);
         }
       }
     }
@@ -267,11 +252,10 @@ export async function runScan(opts: ScanOptions = {}): Promise<ScanSummary> {
   const windowStart = new Date(Date.now() - HISTORY_WINDOW_DAYS * DAY_MS);
   const perUser: ScanUserResult[] = [];
   let emailsSent = 0;
-  let smsSent = 0;
   let dealsMatched = 0;
 
   for (const u of active) {
-    const deals: DealPlus[] = [];
+    const deals: Deal[] = [];
 
     for (const t of userTasks.get(u.id) ?? []) {
       const fp = fresh.get(taskKey(t.origin, t.dest, t.departDate, t.returnDate));
@@ -306,29 +290,12 @@ export async function runScan(opts: ScanOptions = {}): Promise<ScanSummary> {
       if (triggers.length === 0) continue;
 
       for (const triggerType of triggers) {
+        if (!(await passesDedup(u.id, t, triggerType, price))) continue;
+
         const pctBelowAvg =
           triggerType === "PRICE_DROP" && avg
             ? Math.round((1 - price / avg) * 100)
             : null;
-
-        const smsWorthy =
-          Boolean(u.smsOptIn && u.phone) &&
-          ((triggerType === "BUDGET" && price <= u.budgetUsd * SMS_BUDGET_RATIO) ||
-            (triggerType === "PRICE_DROP" &&
-              pctBelowAvg !== null &&
-              pctBelowAvg >= SMS_DROP_THRESHOLD * 100));
-
-        const channels: NotifyChannel[] = [];
-        if (await passesDedup(u.id, t, triggerType, "EMAIL", price)) {
-          channels.push("EMAIL");
-        }
-        if (
-          smsWorthy &&
-          (await passesDedup(u.id, t, triggerType, "SMS", price))
-        ) {
-          channels.push("SMS");
-        }
-        if (channels.length === 0) continue;
 
         deals.push({
           originIata: t.origin,
@@ -349,32 +316,24 @@ export async function runScan(opts: ScanOptions = {}): Promise<ScanSummary> {
             t.departDate,
             t.returnDate,
           ),
-          channels,
         });
       }
     }
 
     dealsMatched += deals.length;
     let emailSent = false;
-    let smsDelivered = false;
-
-    const emailDeals = deals.filter((d) => d.channels.includes("EMAIL"));
-    const smsDeals = deals.filter((d) => d.channels.includes("SMS"));
 
     if (deals.length > 0) {
-      log(
-        opts,
-        `${u.email}: ${deals.length} deal(s) (${emailDeals.length} email, ${smsDeals.length} sms)`,
-      );
+      log(opts, `${u.email}: ${deals.length} deal(s)`);
     }
 
-    if (!opts.dryRun && emailDeals.length > 0) {
+    if (!opts.dryRun && deals.length > 0) {
       try {
-        await sendDigestEmail(u.email, emailDeals);
+        await sendDigestEmail(u.email, deals);
         emailSent = true;
         emailsSent++;
         await prisma.notificationLog.createMany({
-          data: emailDeals.map((d) => ({
+          data: deals.map((d) => ({
             userId: u.id,
             originIata: d.originIata,
             destIata: d.destIata,
@@ -391,34 +350,11 @@ export async function runScan(opts: ScanOptions = {}): Promise<ScanSummary> {
       }
     }
 
-    if (!opts.dryRun && smsDeals.length > 0 && u.phone) {
-      try {
-        await sendDealSms(u.phone, smsDeals);
-        smsDelivered = true;
-        smsSent++;
-        await prisma.notificationLog.createMany({
-          data: smsDeals.map((d) => ({
-            userId: u.id,
-            originIata: d.originIata,
-            destIata: d.destIata,
-            departDate: d.departDate,
-            returnDate: d.returnDate,
-            triggerType: d.triggerType,
-            channel: "SMS",
-            priceUsd: d.priceUsd,
-          })),
-        });
-      } catch (err) {
-        console.error(`[scan] SMS to ${u.email} failed:`, err);
-      }
-    }
-
     perUser.push({
       userId: u.id,
       email: u.email,
       dealsMatched: deals.length,
       emailSent,
-      smsSent: smsDelivered,
     });
   }
 
@@ -431,7 +367,6 @@ export async function runScan(opts: ScanOptions = {}): Promise<ScanSummary> {
     snapshotsWritten,
     dealsMatched,
     emailsSent,
-    smsSent,
     perUser,
   };
 }

@@ -5,6 +5,8 @@ import {
   WEEKEND_PATTERNS,
   WEEKEND_PATTERN_LABELS,
   MAX_WEEKS_AHEAD,
+  MAX_ORIGINS,
+  MAX_DESTINATIONS,
   type WeekendPatternKey,
 } from "@/lib/constants";
 import type { PreferencesView } from "@/lib/user";
@@ -22,7 +24,7 @@ interface CountryOpt {
 interface Props {
   airports: AirportOpt[];
   countries: CountryOpt[];
-  initial: PreferencesView | null;
+  initial: PreferencesView;
   defaultWeeksAhead: number;
 }
 
@@ -33,7 +35,7 @@ interface DestItem {
   label: string;
 }
 
-export default function OnboardingForm({
+export default function SettingsForm({
   airports,
   countries,
   initial,
@@ -44,37 +46,38 @@ export default function OnboardingForm({
     [airports],
   );
 
-  const [origins, setOrigins] = useState<string[]>(initial?.origins ?? []);
+  const [name, setName] = useState(initial.name ?? "");
+  const [phone, setPhone] = useState(initial.phone ?? "");
+  const [smsOptIn, setSmsOptIn] = useState(initial.smsOptIn);
+
+  const [origins, setOrigins] = useState<string[]>(initial.origins);
   const [originInput, setOriginInput] = useState("");
 
   const [destinations, setDestinations] = useState<DestItem[]>(
-    initial?.destinations.map((d) => ({
+    initial.destinations.map((d) => ({
       kind: d.kind,
       iataCode: d.iataCode ?? undefined,
       countryCode: d.countryCode ?? undefined,
       label: d.label || d.iataCode || d.countryCode || "?",
-    })) ?? [],
+    })),
   );
   const [destMode, setDestMode] = useState<"COUNTRY" | "AIRPORT">("COUNTRY");
   const [destCountry, setDestCountry] = useState(countries[0]?.code ?? "");
   const [destAirportInput, setDestAirportInput] = useState("");
 
   const [budget, setBudget] = useState(
-    initial?.budgetUsd != null ? String(initial.budgetUsd) : "",
+    initial.budgetUsd != null ? String(initial.budgetUsd) : "",
   );
   const [patterns, setPatterns] = useState<Set<WeekendPatternKey>>(
-    new Set(initial?.weekendPatterns ?? ["FRI_SUN"]),
+    new Set(initial.weekendPatterns.length ? initial.weekendPatterns : ["FRI_SUN"]),
   );
   const [weeksAhead, setWeeksAhead] = useState(
-    String(initial?.weeksAhead ?? defaultWeeksAhead),
+    String(initial.weeksAhead || defaultWeeksAhead),
   );
-  const [alertOnBudget, setAlertOnBudget] = useState(
-    initial?.alertOnBudget ?? true,
-  );
+  const [alertOnBudget, setAlertOnBudget] = useState(initial.alertOnBudget);
   const [alertOnPriceDrop, setAlertOnPriceDrop] = useState(
-    initial?.alertOnPriceDrop ?? true,
+    initial.alertOnPriceDrop,
   );
-  const [email, setEmail] = useState(initial?.email ?? "");
 
   const [submitting, setSubmitting] = useState(false);
   const [status, setStatus] = useState<
@@ -85,16 +88,18 @@ export default function OnboardingForm({
     const v = raw.trim().toUpperCase();
     if (!v) return null;
     if (airportByIata.has(v)) return v;
-    // "JFK — New York" style paste
     const lead = v.slice(0, 3);
     if (airportByIata.has(lead)) return lead;
-    if (/^[A-Z]{3}$/.test(v)) return v; // accept unknown-but-plausible code
-    // try city match
+    if (/^[A-Z]{3}$/.test(v)) return v;
     const byCity = airports.find((a) => a.city.toUpperCase() === v);
     return byCity?.iata ?? null;
   }
 
   function addOrigin() {
+    if (origins.length >= MAX_ORIGINS) {
+      setStatus({ type: "err", msg: `Up to ${MAX_ORIGINS} origins.` });
+      return;
+    }
     const iata = resolveIata(originInput);
     if (!iata) {
       setStatus({ type: "err", msg: `Couldn't recognise "${originInput}"` });
@@ -106,13 +111,18 @@ export default function OnboardingForm({
   }
 
   function addDestination() {
+    if (destinations.length >= MAX_DESTINATIONS) {
+      setStatus({ type: "err", msg: `Up to ${MAX_DESTINATIONS} destinations.` });
+      return;
+    }
     if (destMode === "COUNTRY") {
       if (!destCountry) return;
-      const name = countries.find((c) => c.code === destCountry)?.name ?? destCountry;
+      const nm =
+        countries.find((c) => c.code === destCountry)?.name ?? destCountry;
       setDestinations((cur) =>
         cur.some((d) => d.kind === "COUNTRY" && d.countryCode === destCountry)
           ? cur
-          : [...cur, { kind: "COUNTRY", countryCode: destCountry, label: name }],
+          : [...cur, { kind: "COUNTRY", countryCode: destCountry, label: nm }],
       );
       setStatus(null);
     } else {
@@ -142,13 +152,15 @@ export default function OnboardingForm({
     });
   }
 
+  const phoneValid = phone === "" || /^\+[1-9]\d{6,14}$/.test(phone.trim());
   const canSubmit =
     origins.length > 0 &&
     destinations.length > 0 &&
     patterns.size > 0 &&
     (alertOnBudget || alertOnPriceDrop) &&
     Number(budget) > 0 &&
-    /.+@.+\..+/.test(email) &&
+    phoneValid &&
+    (!smsOptIn || phone.trim() !== "") &&
     !submitting;
 
   async function onSubmit(e: React.FormEvent) {
@@ -160,7 +172,9 @@ export default function OnboardingForm({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          email: email.trim(),
+          name: name.trim() || undefined,
+          phone: phone.trim(),
+          smsOptIn,
           budgetUsd: Number(budget),
           weeksAhead: Number(weeksAhead),
           alertOnBudget,
@@ -177,18 +191,12 @@ export default function OnboardingForm({
       });
       const data = await res.json();
       if (!res.ok) {
-        setStatus({
-          type: "err",
-          msg: data?.error ?? `Request failed (${res.status})`,
-        });
+        setStatus({ type: "err", msg: data?.error ?? `Failed (${res.status})` });
       } else {
-        setStatus({
-          type: "ok",
-          msg: "Saved. The next scan will pick up these settings.",
-        });
+        setStatus({ type: "ok", msg: "Saved. The next scan will use these settings." });
       }
     } catch {
-      setStatus({ type: "err", msg: "Network error — is the dev server running?" });
+      setStatus({ type: "err", msg: "Network error." });
     } finally {
       setSubmitting(false);
     }
@@ -205,20 +213,16 @@ export default function OnboardingForm({
       </datalist>
 
       {status && (
-        <div
-          className={`notice ${status.type === "ok" ? "notice-ok" : "notice-err"}`}
-        >
+        <div className={`notice ${status.type === "ok" ? "notice-ok" : "notice-err"}`}>
           {status.msg}
         </div>
       )}
 
       <section className="card">
         <h2>1 · Origin airports</h2>
-        <label htmlFor="origin">Where you&apos;d fly from</label>
-        <p className="hint">Type an IATA code or city and pick from the list.</p>
+        <p className="hint">Up to {MAX_ORIGINS}. Type an IATA code or city and pick from the list.</p>
         <div className="row">
           <input
-            id="origin"
             type="text"
             list="airport-list"
             placeholder="JFK"
@@ -244,9 +248,7 @@ export default function OnboardingForm({
                 <button
                   type="button"
                   aria-label={`Remove ${o}`}
-                  onClick={() =>
-                    setOrigins((cur) => cur.filter((x) => x !== o))
-                  }
+                  onClick={() => setOrigins((cur) => cur.filter((x) => x !== o))}
                 >
                   ×
                 </button>
@@ -314,11 +316,14 @@ export default function OnboardingForm({
         )}
 
         <p className="hint">
-          A country expands to its major airports (resolved once and cached).
+          Up to {MAX_DESTINATIONS}. A country expands to its major airports.
         </p>
         <div className="chips">
           {destinations.map((d, i) => (
-            <span key={`${d.kind}-${d.iataCode ?? d.countryCode}`} className="chip">
+            <span
+              key={`${d.kind}-${d.iataCode ?? d.countryCode}`}
+              className="chip"
+            >
               {d.kind === "COUNTRY" ? `${d.label} · country` : d.label}
               <button
                 type="button"
@@ -382,7 +387,7 @@ export default function OnboardingForm({
       </section>
 
       <section className="card">
-        <h2>5 · Alert types</h2>
+        <h2>5 · Alerts</h2>
         <label className="check">
           <input
             type="checkbox"
@@ -404,26 +409,59 @@ export default function OnboardingForm({
             <b>30%+ below average</b>
             <small>
               Email when a fare is ≤ 70% of the recent average for that
-              route + weekend (needs a little price history first).
+              route + weekend (needs some price history first).
+            </small>
+          </span>
+        </label>
+
+        <div className="field" style={{ marginTop: 16 }}>
+          <label htmlFor="phone">Mobile number for SMS (optional)</label>
+          <p className="hint">
+            E.164 format, e.g. <code>+14155551234</code>. SMS is only sent for the
+            biggest drops.
+          </p>
+          <input
+            id="phone"
+            type="text"
+            placeholder="+14155551234"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+          />
+          {!phoneValid && (
+            <p className="hint" style={{ color: "var(--danger)" }}>
+              Must start with + and country code.
+            </p>
+          )}
+        </div>
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={smsOptIn}
+            disabled={phone.trim() === ""}
+            onChange={(e) => setSmsOptIn(e.target.checked)}
+          />
+          <span>
+            <b>Text me the big ones</b>
+            <small>
+              SMS for budget deals well under budget and price drops of 40%+.
+              Requires a phone number.
             </small>
           </span>
         </label>
       </section>
 
       <section className="card">
-        <h2>6 · Where to email you</h2>
-        <label htmlFor="email">Email address</label>
+        <h2>6 · Your name (optional)</h2>
         <input
-          id="email"
-          type="email"
-          placeholder="you@example.com"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
+          type="text"
+          placeholder="Sam"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
         />
       </section>
 
       <button type="submit" className="btn-primary" disabled={!canSubmit}>
-        {submitting ? "Saving…" : initial ? "Update preferences" : "Save preferences"}
+        {submitting ? "Saving…" : "Save settings"}
       </button>
     </form>
   );

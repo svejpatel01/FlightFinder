@@ -1,12 +1,8 @@
 // FlightFinder — Prisma schema (SQLite)
 //
-// This is a single-user personal app: there is exactly one `User` row, created
-// / updated from the onboarding form. The scan job still loops "per user" so the
-// model stays trivially multi-user if that's ever wanted.
-//
-// SQLite has no native enums or array columns, so a few fields are stored as
-// short string constants ("FRI_SUN", "BUDGET", …) or JSON-encoded strings. The
-// allowed values live in lib/constants.ts.
+// Multi-user, invite-only. Sign-in is passwordless (magic link emailed via
+// Resend). SQLite has no enums/arrays, so short string constants and
+// JSON-encoded strings are used; allowed values live in lib/constants.ts.
 
 generator client {
   provider = "prisma-client-js"
@@ -17,21 +13,72 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// --- Auth / accounts ----------------------------------------------------
+
 model User {
   id               String   @id @default(cuid())
-  email            String
-  budgetUsd        Float
-  weeksAhead       Int      @default(12) // how many weeks out to watch (max 26, enforced in app)
-  alertOnBudget    Boolean  @default(true)
-  alertOnPriceDrop Boolean  @default(true)
+  email            String   @unique
+  name             String?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+  lastLoginAt      DateTime?
+
+  // Watch preferences
+  budgetUsd        Float    @default(0)
+  weeksAhead       Int      @default(12) // max 26, enforced in app
+  alertOnBudget    Boolean  @default(true)
+  alertOnPriceDrop Boolean  @default(true)
+  scanEnabled      Boolean  @default(true) // user can pause without losing config
+
+  // SMS (Twilio)
+  phone     String? // E.164, e.g. +14155551234
+  smsOptIn  Boolean @default(false)
 
   origins         Origin[]
   destinations    WishlistDestination[]
   weekendPatterns WeekendPattern[]
   notifications   NotificationLog[]
+  sessions        Session[]
 }
+
+// Allowlist. Signing in requires an unused (or already-claimed-by-you) invite
+// for that email address. Seed one for OWNER_EMAIL on startup; add more with
+// `npm run invite -- add someone@example.com`.
+model Invite {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  invitedBy String?
+  note      String?
+  createdAt DateTime @default(now())
+  claimedAt DateTime?
+}
+
+// Single-use magic-link token. `email` (not userId) because the user row may
+// not exist yet on first sign-in.
+model LoginToken {
+  id         String   @id @default(cuid())
+  email      String
+  tokenHash  String   @unique // sha256 of the random token
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime @default(now())
+
+  @@index([email, createdAt])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String   @unique // sha256 of the cookie value
+  userAgent String?
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+// --- Watch configuration ----------------------------------------------------
 
 model Origin {
   id       String @id @default(cuid())
@@ -47,52 +94,49 @@ model WishlistDestination {
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  // kind = "AIRPORT" -> watch the single airport/metro in `iataCode`
-  // kind = "COUNTRY" -> watch a whole country: `countryCode` is ISO-3166 alpha-2,
-  //                     expanded once into `resolvedAirports` (see below).
+  // kind = "AIRPORT" -> single airport/metro in `iataCode`
+  // kind = "COUNTRY" -> ISO-3166 alpha-2 in `countryCode`, expanded + cached
   kind        String
   iataCode    String?
   countryCode String?
-  label       String? // human label for UI + emails, e.g. "Japan" or "London (LHR)"
+  label       String?
 
-  // JSON-encoded string[] of IATA codes this destination expands to.
-  // AIRPORT -> just [iataCode]. COUNTRY -> major airports for that country,
-  // resolved once from lib/airports.ts and cached here (re-resolved if stale).
-  resolvedAirports String?
+  resolvedAirports String? // JSON string[] of IATA codes, cached
   resolvedAt       DateTime?
 
   createdAt DateTime @default(now())
 }
 
 model WeekendPattern {
-  id     String @id @default(cuid())
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  // "FRI_SUN" | "SAT_SUN" | "THU_SUN" — a user may have more than one row.
-  pattern String
+  id      String @id @default(cuid())
+  userId  String
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pattern String // "FRI_SUN" | "SAT_SUN" | "THU_SUN"
 
   @@unique([userId, pattern])
 }
 
-// Price history. Not user-scoped on purpose: the rolling average is computed per
-// (origin, destination, weekendPattern) route and is shared history.
+// --- Price history + notifications ----------------------------------------
+
+// Shared across users on purpose: the rolling average is per
+// (origin, dest, weekendPattern) route, and two users watching the same route
+// only cost one Duffel search per scan.
 model PriceSnapshot {
   id             String   @id @default(cuid())
   originIata     String
   destIata       String
-  departDate     String // "YYYY-MM-DD" — date-only, stored as text to avoid TZ drift
+  departDate     String // "YYYY-MM-DD"
   returnDate     String // "YYYY-MM-DD"
   weekendPattern String
   priceUsd       Float
-  currency       String   @default("USD") // what Duffel actually returned; treated as ~USD
+  currency       String   @default("USD")
   checkedAt      DateTime @default(now())
 
   @@index([originIata, destIata, weekendPattern, checkedAt])
+  @@index([originIata, destIata, departDate, returnDate, checkedAt])
 }
 
-// One row per alert actually emailed. Used to avoid re-sending the same deal
-// every scan (see dedup logic in lib/scan.ts).
+// One row per alert actually delivered, per channel. Drives dedup.
 model NotificationLog {
   id          String   @id @default(cuid())
   userId      String
@@ -102,8 +146,9 @@ model NotificationLog {
   departDate  String
   returnDate  String
   triggerType String // "BUDGET" | "PRICE_DROP"
+  channel     String   @default("EMAIL") // "EMAIL" | "SMS"
   priceUsd    Float
   sentAt      DateTime @default(now())
 
-  @@index([userId, originIata, destIata, departDate, returnDate, triggerType, sentAt])
+  @@index([userId, originIata, destIata, departDate, returnDate, triggerType, channel, sentAt])
 }

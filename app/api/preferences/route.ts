@@ -1,10 +1,13 @@
 import { z } from "zod";
 import {
   MAX_WEEKS_AHEAD,
+  MAX_ORIGINS,
+  MAX_DESTINATIONS,
   WEEKEND_PATTERNS,
   DESTINATION_KINDS,
 } from "@/lib/constants";
 import { getPreferences, savePreferences } from "@/lib/user";
+import { getSessionUser } from "@/lib/auth";
 
 const destinationSchema = z
   .object({
@@ -13,28 +16,39 @@ const destinationSchema = z
     countryCode: z.string().trim().length(2).optional(),
     label: z.string().trim().max(120).optional(),
   })
-  .refine(
-    (d) => (d.kind === "AIRPORT" ? !!d.iataCode : !!d.countryCode),
-    { message: "AIRPORT needs iataCode; COUNTRY needs countryCode" },
-  );
+  .refine((d) => (d.kind === "AIRPORT" ? !!d.iataCode : !!d.countryCode), {
+    message: "AIRPORT needs iataCode; COUNTRY needs countryCode",
+  });
 
 const bodySchema = z.object({
-  email: z.string().trim().email(),
+  name: z.string().trim().max(80).optional(),
+  phone: z
+    .string()
+    .trim()
+    .regex(/^\+[1-9]\d{6,14}$/, "Use E.164 format, e.g. +14155551234")
+    .optional()
+    .or(z.literal("")),
+  smsOptIn: z.boolean(),
   budgetUsd: z.number().positive().max(100_000),
   weeksAhead: z.number().int().min(1).max(MAX_WEEKS_AHEAD),
   alertOnBudget: z.boolean(),
   alertOnPriceDrop: z.boolean(),
   weekendPatterns: z.array(z.enum(WEEKEND_PATTERNS)).min(1),
-  origins: z.array(z.string().trim().min(3).max(4)).min(1),
-  destinations: z.array(destinationSchema).min(1),
+  origins: z.array(z.string().trim().min(3).max(4)).min(1).max(MAX_ORIGINS),
+  destinations: z.array(destinationSchema).min(1).max(MAX_DESTINATIONS),
 });
 
 export async function GET() {
-  const prefs = await getPreferences();
-  return Response.json({ preferences: prefs });
+  const user = await getSessionUser();
+  if (!user) return Response.json({ error: "Not signed in" }, { status: 401 });
+  const preferences = await getPreferences(user.id);
+  return Response.json({ preferences });
 }
 
 export async function POST(request: Request) {
+  const user = await getSessionUser();
+  if (!user) return Response.json({ error: "Not signed in" }, { status: 401 });
+
   let json: unknown;
   try {
     json = await request.json();
@@ -49,24 +63,36 @@ export async function POST(request: Request) {
       { status: 422 },
     );
   }
+  const data = parsed.data;
 
-  if (!parsed.data.alertOnBudget && !parsed.data.alertOnPriceDrop) {
+  if (!data.alertOnBudget && !data.alertOnPriceDrop) {
+    return Response.json({ error: "Enable at least one alert type" }, { status: 422 });
+  }
+  if (data.smsOptIn && !data.phone) {
     return Response.json(
-      { error: "Enable at least one alert type" },
+      { error: "Add a phone number to enable SMS alerts" },
       { status: 422 },
     );
   }
 
   try {
-    await savePreferences({
-      ...parsed.data,
-      origins: parsed.data.origins.map((o) => o.toUpperCase()),
+    await savePreferences(user.id, {
+      name: data.name,
+      phone: data.phone || null,
+      smsOptIn: data.smsOptIn,
+      budgetUsd: data.budgetUsd,
+      weeksAhead: data.weeksAhead,
+      alertOnBudget: data.alertOnBudget,
+      alertOnPriceDrop: data.alertOnPriceDrop,
+      weekendPatterns: data.weekendPatterns,
+      origins: data.origins.map((o) => o.toUpperCase()),
+      destinations: data.destinations,
     });
   } catch (err) {
     console.error("[preferences] save failed", err);
     return Response.json({ error: "Could not save preferences" }, { status: 500 });
   }
 
-  const preferences = await getPreferences();
+  const preferences = await getPreferences(user.id);
   return Response.json({ ok: true, preferences });
 }

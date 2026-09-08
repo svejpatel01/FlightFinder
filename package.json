@@ -15,6 +15,8 @@
     "db:studio": "prisma studio",
     "duffel:test": "tsx scripts/test-duffel.ts",
     "email:test": "tsx scripts/test-email.ts",
+    "sms:test": "tsx scripts/test-sms.ts",
+    "invite": "tsx scripts/invite.ts",
     "scan": "tsx scripts/run-scan.ts",
     "cron": "tsx scripts/cron.ts"
   },

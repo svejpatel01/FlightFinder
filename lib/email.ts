@@ -130,19 +130,54 @@ function escapeHtml(s: string): string {
 
 export class EmailConfigError extends Error {}
 
+function resend(): Resend {
+  const key = process.env.RESEND_API_KEY;
+  if (!key) throw new EmailConfigError("RESEND_API_KEY is not set");
+  return new Resend(key);
+}
+
+function fromAddress(): string {
+  return process.env.EMAIL_FROM ?? "FlightFinder <onboarding@resend.dev>";
+}
+
+/** Magic-link sign-in email. */
+export async function sendLoginLink(
+  toEmail: string,
+  url: string,
+): Promise<string | null> {
+  const { data, error } = await resend().emails.send({
+    from: fromAddress(),
+    to: [toEmail],
+    subject: "Your FlightFinder sign-in link",
+    text: `Sign in to FlightFinder:\n\n${url}\n\nThis link works once and expires in 15 minutes. If you didn't request it, ignore this email.`,
+    html: `
+      <div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:480px;margin:0 auto;color:#111;">
+        <h2 style="margin:0 0 12px;">Sign in to FlightFinder</h2>
+        <p style="margin:0 0 20px;color:#444;">Click the button below. The link works once and expires in 15 minutes.</p>
+        <p style="margin:0 0 24px;">
+          <a href="${url}" style="background:#1a63d8;color:#fff;padding:11px 18px;border-radius:8px;text-decoration:none;font-weight:600;">Sign in</a>
+        </p>
+        <p style="margin:0;color:#999;font-size:12px;word-break:break-all;">Or paste this URL: ${url}</p>
+      </div>`,
+  });
+  if (error) throw new Error(`Resend error: ${JSON.stringify(error)}`);
+  return data?.id ?? null;
+}
+
 /** Send one digest email. Throws on misconfiguration or Resend failure. */
 export async function sendDigestEmail(
   toEmail: string,
   deals: Deal[],
 ): Promise<string | null> {
-  const key = process.env.RESEND_API_KEY;
-  if (!key) throw new EmailConfigError("RESEND_API_KEY is not set");
-  const from = process.env.EMAIL_FROM ?? "FlightFinder <onboarding@resend.dev>";
-
-  const resend = new Resend(key);
   const { subject, text, html } = formatDigest(toEmail, deals);
-  const { data, error } = await resend.emails.send({
-    from,
+
+  if (process.env.EMAIL_MOCK === "1") {
+    console.log(`[email:mock] -> ${toEmail}  "${subject}"  (${deals.length} deal(s))`);
+    return null;
+  }
+
+  const { data, error } = await resend().emails.send({
+    from: fromAddress(),
     to: [toEmail],
     subject,
     text,

@@ -44,6 +44,88 @@ a { color: var(--accent); }
   margin: 0 auto;
   padding: 40px 20px 80px;
 }
+.wrap-narrow { max-width: 440px; }
+.wrap-wide { max-width: 960px; }
+
+/* nav */
+.nav {
+  border-bottom: 1px solid var(--border);
+  background: var(--card);
+}
+.nav-inner {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 12px 20px;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+.nav-brand { font-weight: 700; text-decoration: none; color: var(--fg); }
+.nav-brand span { color: var(--accent); }
+.nav-links {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: 14px;
+}
+.nav-links a { text-decoration: none; }
+.nav-email { color: var(--muted); font-size: 13px; }
+.nav-signout {
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.nav-signout:hover { border-color: var(--accent); }
+
+/* dashboard */
+.statgrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 20px;
+}
+@media (max-width: 640px) { .statgrid { grid-template-columns: repeat(2, 1fr); } }
+.stat {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+}
+.stat-num { display: block; font-size: 22px; font-weight: 700; }
+.stat-label { color: var(--muted); font-size: 12px; }
+
+.tablewrap { overflow-x: auto; }
+table.grid {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+table.grid th,
+table.grid td {
+  text-align: left;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+table.grid th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.03em; }
+table.grid tr:last-child td { border-bottom: none; }
+table.grid td.r, table.grid th.r { text-align: right; }
+table.grid tr.hit { background: color-mix(in srgb, var(--ok) 12%, transparent); }
+.muted { color: var(--muted); }
+.down { color: var(--ok); font-weight: 600; }
+.up { color: var(--muted); }
+
+.steps, ol.steps { margin: 0; padding-left: 20px; }
+.steps li { margin-bottom: 6px; }
 
 h1 { font-size: 24px; margin: 0 0 4px; }
 .sub { color: var(--muted); margin: 0 0 28px; }

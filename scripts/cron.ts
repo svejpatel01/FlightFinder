@@ -7,12 +7,17 @@
 import "dotenv/config";
 import cron from "node-cron";
 import { runScan } from "../lib/scan";
+import { ensureOwnerInvite } from "../lib/invites";
 
 const expr = process.env.SCAN_CRON ?? "0 */6 * * *";
 if (!cron.validate(expr)) {
   console.error(`Invalid SCAN_CRON expression: "${expr}"`);
   process.exit(1);
 }
+
+void ensureOwnerInvite().catch((e) =>
+  console.error("[cron] ensureOwnerInvite failed", e),
+);
 
 let running = false;
 
@@ -31,8 +36,9 @@ async function tick() {
     } else {
       console.log(
         `[cron] done in ${((Date.now() - started.getTime()) / 1000).toFixed(0)}s — ` +
-          `${s.pricesFetched} prices, ${s.snapshotsWritten} snapshots, ` +
-          `${s.dealsMatched} deal(s), email=${s.emailSent}`,
+          `${s.configuredUsers} user(s), ${s.uniqueSearches} searches, ` +
+          `${s.snapshotsWritten} snapshots, ${s.dealsMatched} deal(s), ` +
+          `${s.emailsSent} email(s), ${s.smsSent} sms`,
       );
     }
   } catch (err) {

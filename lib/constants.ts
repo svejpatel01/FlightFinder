@@ -28,6 +28,15 @@ export type DestinationKind = (typeof DESTINATION_KINDS)[number];
 export const MAX_WEEKS_AHEAD = 26;
 export const DEFAULT_WEEKS_AHEAD = 12;
 
+// Per-user caps. These bound the shared Duffel request budget
+// (60 req/min, shared across all users) — see lib/scan.ts.
+export const MAX_ORIGINS = 3;
+export const MAX_DESTINATIONS = 5;
+export const MAX_PATTERNS = 3;
+
+export const NOTIFY_CHANNELS = ["EMAIL", "SMS"] as const;
+export type NotifyChannel = (typeof NOTIFY_CHANNELS)[number];
+
 export function isWeekendPattern(v: string): v is WeekendPatternKey {
   return (WEEKEND_PATTERNS as readonly string[]).includes(v);
 }

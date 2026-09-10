@@ -30,8 +30,10 @@ export const DEFAULT_WEEKS_AHEAD = 12;
 
 // Per-user caps. These bound the shared Duffel request budget
 // (60 req/min, shared across all users) — see lib/scan.ts.
-export const MAX_ORIGINS = 3;
-export const MAX_DESTINATIONS = 5;
+// Sized for ≤5 users: 5 × 15 × 3 = 675 route-weekends/user worst case,
+// ~500–600 unique searches/scan after overlap ≈ 9 min at the 1.1s throttle.
+export const MAX_ORIGINS = 5;
+export const MAX_DESTINATIONS = 15;
 export const MAX_PATTERNS = 3;
 
 export function isWeekendPattern(v: string): v is WeekendPatternKey {

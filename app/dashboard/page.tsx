@@ -1,22 +1,10 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
-import { getDashboard, type DashboardRow } from "@/lib/dashboard";
-import { WEEKEND_PATTERN_LABELS } from "@/lib/constants";
+import { getDashboard } from "@/lib/dashboard";
+import DashboardTable from "./dashboard-table";
 
 export const dynamic = "force-dynamic";
 
-const DFMT = new Intl.DateTimeFormat("en-US", {
-  weekday: "short",
-  month: "short",
-  day: "numeric",
-  timeZone: "UTC",
-});
-function fmtDate(iso: string) {
-  return DFMT.format(new Date(`${iso}T00:00:00Z`));
-}
-function fmtRange(d: string, r: string) {
-  return `${fmtDate(d)} – ${fmtDate(r)}`;
-}
 function ago(iso: string | null): string {
   if (!iso) return "never";
   const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
@@ -24,18 +12,6 @@ function ago(iso: string | null): string {
   const hrs = Math.round(mins / 60);
   if (hrs < 48) return `${hrs}h ago`;
   return `${Math.round(hrs / 24)}d ago`;
-}
-
-function PriceCell({ row }: { row: DashboardRow }) {
-  if (row.priceUsd === null) {
-    return <span className="muted">—</span>;
-  }
-  return (
-    <>
-      <strong>${Math.round(row.priceUsd)}</strong>
-      {row.currency !== "USD" && ` ${row.currency}`}
-    </>
-  );
 }
 
 export default async function DashboardPage() {
@@ -100,69 +76,12 @@ export default async function DashboardPage() {
           <code>npm run scan</code> now).
         </div>
       ) : (
-        <div className="tablewrap">
-          <table className="grid">
-            <thead>
-              <tr>
-                <th>Route</th>
-                <th>Weekend</th>
-                <th className="r">Price</th>
-                <th className="r">vs avg</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {shown.map((row) => (
-                <tr
-                  key={`${row.originIata}-${row.destIata}-${row.departDate}`}
-                  className={row.underBudget ? "hit" : undefined}
-                >
-                  <td>
-                    <strong>
-                      {row.originIata} → {row.destIata}
-                    </strong>
-                    <span className="muted"> {row.destLabel}</span>
-                  </td>
-                  <td>
-                    {fmtRange(row.departDate, row.returnDate)}
-                    <span className="muted">
-                      {" "}
-                      · {WEEKEND_PATTERN_LABELS[row.weekendPattern]}
-                    </span>
-                  </td>
-                  <td className="r">
-                    <PriceCell row={row} />
-                  </td>
-                  <td className="r">
-                    {row.pctVsAvg === null ? (
-                      <span className="muted">—</span>
-                    ) : (
-                      <span className={row.pctVsAvg < 0 ? "down" : "up"}>
-                        {row.pctVsAvg < 0 ? "" : "+"}
-                        {row.pctVsAvg}%
-                      </span>
-                    )}
-                  </td>
-                  <td className="r">
-                    <a
-                      href={row.googleFlightsUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      search ↗
-                    </a>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {data.rows.length > shown.length && (
-            <p className="hint">
-              Showing the {shown.length} cheapest of {data.rows.length}{" "}
-              route-weekends.
-            </p>
-          )}
-        </div>
+        <>
+          <p className="hint" style={{ marginBottom: 8 }}>
+            Click a row to see that flight&apos;s price over time.
+          </p>
+          <DashboardTable rows={shown} totalRows={data.rows.length} budgetUsd={data.budgetUsd} />
+        </>
       )}
     </div>
   );

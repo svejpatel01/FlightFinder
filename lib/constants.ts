@@ -28,7 +28,7 @@ export type DestinationKind = (typeof DESTINATION_KINDS)[number];
 export const MAX_WEEKS_AHEAD = 26;
 export const DEFAULT_WEEKS_AHEAD = 12;
 
-// Per-user caps. These bound the shared Duffel request budget
+// Per-user caps. These bound the shared search volume against Google Flights
 // (60 req/min, shared across all users) — see lib/scan.ts.
 // Sized for ≤5 users: 5 × 15 × 3 = 675 route-weekends/user worst case,
 // ~500–600 unique searches/scan after overlap ≈ 9 min at the 1.1s throttle.

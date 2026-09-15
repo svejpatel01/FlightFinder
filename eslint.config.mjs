@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Vendored third-party source (lib/fli/ — see its LICENSE); not ours to lint.
+    "lib/fli/**",
   ]),
 ]);
 

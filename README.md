@@ -8,7 +8,7 @@ logged-in **dashboard** shows the current cheapest fares per weekend.
 - **Next.js 16** (App Router, TypeScript)
 - **SQLite via Prisma** — one file, no external DB
 - **Passwordless auth** — magic link emailed via Resend (invite-only allowlist)
-- **Duffel API** — flight price search (offer requests only; never books, so it's free)
+- **Flight price search** — via [`fli`](https://github.com/punitarani/fli) (vendored in `lib/fli/`), which talks directly to Google Flights' own frontend API. No key, no account, no per-search cost — see the caveats below.
 - **Resend** — magic-link + digest email
 - **node-cron** — one scan every 6 hours, covering all users
 
@@ -37,10 +37,8 @@ your watch. Scans run via `npm run cron` (or one-off `npm run scan`).
 | `APP_URL` | Public base URL — used to build magic-link + dashboard URLs. Must match the real host in production. |
 | `OWNER_EMAIL` | Auto-added to the invite allowlist on startup (`invite -- seed`, or first cron run, or first `/api/auth/request`). |
 | `SESSION_TTL_DAYS` | Session cookie lifetime. Default 30. |
-| `DUFFEL_API_KEY_TEST` / `_LIVE` | Token needs the **`air.offer_requests.create`** permission (write access) — a read-only token 403s. |
-| `DUFFEL_ENV` | `test` (default) or `live`. Live search is still free. |
-| `DUFFEL_MIN_INTERVAL_MS` | Min gap between Duffel calls. Default `1100` (≈55/min, under the 60/60s limit). |
-| `DUFFEL_MOCK` | `1` → deterministic fake prices, no network. |
+| `FLIGHTS_MIN_INTERVAL_MS` | Min gap between flight searches. Default `1500`. No published limit (there's no contract at all) — kept conservative since this is an unofficial endpoint. |
+| `FLIGHTS_MOCK` | `1` → deterministic fake prices, no network. |
 | `RESEND_API_KEY` | From resend.com. Also sends the sign-in link. |
 | `EMAIL_FROM` | Until you verify a domain in Resend, `FlightFinder <onboarding@resend.dev>` — which **only delivers to your own Resend account address**. |
 | `EMAIL_MOCK` | `1` → log digest emails instead of sending. |
@@ -66,18 +64,39 @@ hashes.
 
 ---
 
-## The Duffel rate-limit ceiling (important for multi-user)
+## Flight search: `fli` and what that trade-off actually means
 
-Duffel allows **60 requests/minute**, shared across *all* users (one API key).
-Each scan builds the **global unique** set of `(origin, dest, departDate,
-returnDate)` searches — two users watching the same route cost **one** call — but
-it still scales with total distinct routes × weekends. Each offer request also
-takes 5–15s of wall time.
+Price data comes from [`fli`](https://github.com/punitarani/fli) (MIT
+licensed), vendored directly into `lib/fli/` — its TypeScript port isn't
+published to npm, so the source is copied in rather than depended on. `fli`
+gets real Google Flights prices by calling **the same internal API
+google.com/travel/flights itself uses** — not scraping HTML, not driving a
+browser, and not an official/contracted integration either.
 
-Guardrails built in: per-user caps (**3 origins, 5 destinations, 3 weekend
-patterns**), request throttling, an overlap guard so scans don't stack. Rough
-capacity on the free Duffel tier: a handful of active users on a 6-hour cycle.
-Many users → a paid Duffel plan or a different data source.
+**What that buys you:** free, real prices, no API key, no account, no
+per-search billing — unlike Duffel, whose live mode charges per search once
+you place zero bookings (this app never books, so that model doesn't fit it).
+
+**What it costs you:**
+- **Not sanctioned by Google.** This is outside Google's Terms of Service for
+  automated access. At hobby scale (a handful of users, one scan every 6h)
+  the practical risk is low, but Google could rate-limit or block the
+  server's IP with no warning — and it would fail silently (scans just stop
+  returning prices).
+- **No stability contract.** Google can change its internal API at any time.
+  `fli` breaks until its maintainers patch it; there's no SLA and no support
+  line, just an open-source project.
+- **Pre-1.0** (`fli-js` is `0.0.4`) — the vendored copy is a point-in-time
+  snapshot, not something that gets bugfixes automatically.
+
+Guardrails in place: per-user caps (**5 origins, 15 destinations, 3 weekend
+patterns**), a conservative request throttle (`FLIGHTS_MIN_INTERVAL_MS`, no
+published limit to target — just being a good citizen), and an overlap guard
+so scans don't stack via the same **global unique search dedup** as before
+(two users watching the same route still cost one search).
+
+If `fli` ever stops working, the scan job degrades gracefully — failed
+searches return `null` and are skipped, they don't crash the run.
 
 ---
 
@@ -90,7 +109,7 @@ Many users → a paid Duffel plan or a different data source.
 | `npm test` | Unit tests (weekend date generation) |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run invite -- <add\|remove\|list\|seed>` | Manage the allowlist |
-| `npm run duffel:test [-- ORIG DEST DEPART RETURN]` | Hit Duffel in isolation |
+| `npm run flights:test [-- ORIG DEST DEPART RETURN]` | Hit flight search in isolation |
 | `npm run email:test -- you@example.com` | Send a sample digest |
 | `npm run scan` | One scan now (all users): prices, snapshots, email |
 | `npm run scan -- --dry-run` | Scan with no writes / no sends |
@@ -98,7 +117,7 @@ Many users → a paid Duffel plan or a different data source.
 | `npm run cron -- --run-now` | Scheduler + immediate first run |
 | `npm run db:studio` | Browse the DB |
 
-`DUFFEL_MOCK=1 EMAIL_MOCK=1 npm run scan` exercises the whole pipeline offline.
+`FLIGHTS_MOCK=1 EMAIL_MOCK=1 npm run scan` exercises the whole pipeline offline.
 
 ---
 
@@ -137,8 +156,8 @@ magic link) · `Session` (cookie) · `Origin` · `WishlistDestination` (airport 
 country + cached resolved airports) · `WeekendPattern` · `PriceSnapshot` (shared
 price history) · `NotificationLog` (dedup ledger).
 
-Dates are `"YYYY-MM-DD"` text (no timezone ambiguity). Prices carry the currency
-Duffel returned, treated as ~USD.
+Dates are `"YYYY-MM-DD"` text (no timezone ambiguity). Prices are always
+requested and stored in USD.
 
 ---
 
@@ -160,5 +179,8 @@ break. See the deployment runbook you were given for the full GCP walkthrough.
 - **Dev-only quirk:** the Turbopack dev server lazily compiles routes, so the
   *first* authenticated request to a route after an idle gap can 401 — retry
   once. Does not happen with `npm run start`.
-- Stretch: per-destination budgets, FX conversion for non-USD fares, an admin UI
-  for invites, Postgres for larger scale.
+- **`lib/fli/`** is vendored third-party source (MIT, `lib/fli/LICENSE`), not
+  written for this project — see [punitarani/fli](https://github.com/punitarani/fli).
+  Don't hand-edit it; if it needs an update, re-pull `fli-js/src` from upstream.
+- Stretch: per-destination budgets, an admin UI for invites, Postgres for
+  larger scale, a fallback data source if `fli` ever breaks for good.

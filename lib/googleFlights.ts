@@ -1,5 +1,6 @@
-// Build a Google Flights search URL for an exact route + dates. We deliberately
-// don't deep-link into Duffel (that flow is for booking, which this app never does).
+// Build a Google Flights search URL for an exact route + dates — the link
+// shown in dashboard rows and email digests so a user can open real results
+// and book manually. This app never books anything itself.
 
 export function googleFlightsUrl(
   originIata: string,

@@ -4,8 +4,8 @@
 //   1. loads every scan-enabled, fully-configured user
 //   2. builds the GLOBAL set of unique (origin, dest, departDate, returnDate)
 //      searches across all users — two users watching the same route cost one
-//      Duffel call
-//   3. runs those searches (throttled inside lib/duffel), writes one
+//      Google Flights search
+//   3. runs those searches (throttled inside lib/flightSearch), writes one
 //      PriceSnapshot each
 //   4. per user: evaluates BUDGET / PRICE_DROP triggers against the fresh
 //      prices + rolling average, dedups against NotificationLog
@@ -13,7 +13,7 @@
 
 import { prisma } from "./db";
 import { generateWeekendDatePairs } from "./weekends";
-import { searchCheapestRoundTrip } from "./duffel";
+import { searchCheapestRoundTrip } from "./flightSearch";
 import { googleFlightsUrl } from "./googleFlights";
 import { getAirport, airportsForCountry } from "./airports";
 import {

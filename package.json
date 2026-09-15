@@ -13,7 +13,7 @@
     "prisma:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",
-    "duffel:test": "tsx scripts/test-duffel.ts",
+    "flights:test": "tsx scripts/test-flights.ts",
     "email:test": "tsx scripts/test-email.ts",
     "invite": "tsx scripts/invite.ts",
     "scan": "tsx scripts/run-scan.ts",

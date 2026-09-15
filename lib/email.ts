@@ -113,7 +113,7 @@ export function formatDigest(toEmail: string, deals: Deal[]): Digest {
     <p style="color:#666;margin:0 0 12px;">Cheapest right now: <strong>${money(cheapest)}</strong></p>
     <table style="width:100%;border-collapse:collapse;">${rows}</table>
     <p style="color:#999;font-size:12px;margin-top:20px;border-top:1px solid #e5e5e5;padding-top:12px;">
-      Sent by FlightFinder to ${escapeHtml(toEmail)}. Prices are the cheapest economy round-trip found via Duffel search and can change at any time.
+      Sent by FlightFinder to ${escapeHtml(toEmail)}. Prices are the cheapest economy round-trip found on Google Flights and can change at any time.
     </p>
   </div>`;
 

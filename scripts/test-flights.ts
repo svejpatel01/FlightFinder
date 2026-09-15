@@ -1,13 +1,14 @@
-// Standalone check of the Duffel integration — no DB, no email, no scan job.
+// Standalone check of the flight search integration — no DB, no email, no scan job.
 //
-//   npm run duffel:test
-//   npm run duffel:test -- JFK LHR 2026-10-16 2026-10-18
+//   npm run flights:test
+//   npm run flights:test -- JFK LHR 2026-10-16 2026-10-18
 //
-// Uses the sandbox key by default (DUFFEL_ENV=test). Set DUFFEL_ENV=live in .env
-// to hit live search (still free — we never create an order).
+// Hits Google Flights' own (unofficial) API directly via the vendored `fli`
+// library — no API key needed. Set FLIGHTS_MOCK=1 in .env to use deterministic
+// fake prices instead.
 
 import "dotenv/config";
-import { searchCheapestRoundTrip } from "../lib/duffel";
+import { searchCheapestRoundTrip } from "../lib/flightSearch";
 import { generateWeekendDatePairs } from "../lib/weekends";
 
 async function main() {
@@ -38,7 +39,7 @@ async function main() {
     }
   }
 
-  console.log(`DUFFEL_ENV=${process.env.DUFFEL_ENV ?? "test"}`);
+  console.log(`FLIGHTS_MOCK=${process.env.FLIGHTS_MOCK ?? ""}`);
   console.log(`Running ${queries.length} search(es)…\n`);
 
   for (const q of queries) {

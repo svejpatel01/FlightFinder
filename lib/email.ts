@@ -82,7 +82,7 @@ export function formatDigest(toEmail: string, deals: Deal[]): Digest {
     textLines.push(`  Search: ${d.googleFlightsUrl}`);
     textLines.push("");
   }
-  textLines.push("— FlightFinder");
+  textLines.push("— Notiflyer");
   const text = textLines.join("\n");
 
   const rows = deals
@@ -113,7 +113,7 @@ export function formatDigest(toEmail: string, deals: Deal[]): Digest {
     <p style="color:#666;margin:0 0 12px;">Cheapest right now: <strong>${money(cheapest)}</strong></p>
     <table style="width:100%;border-collapse:collapse;">${rows}</table>
     <p style="color:#999;font-size:12px;margin-top:20px;border-top:1px solid #e5e5e5;padding-top:12px;">
-      Sent by FlightFinder to ${escapeHtml(toEmail)}. Prices are the cheapest economy round-trip found on Google Flights and can change at any time.
+      Sent by Notiflyer to ${escapeHtml(toEmail)}. Prices are the cheapest economy round-trip found on Google Flights and can change at any time.
     </p>
   </div>`;
 
@@ -137,7 +137,7 @@ function resend(): Resend {
 }
 
 function fromAddress(): string {
-  return process.env.EMAIL_FROM ?? "FlightFinder <onboarding@resend.dev>";
+  return process.env.EMAIL_FROM ?? "Notiflyer <onboarding@resend.dev>";
 }
 
 /** Magic-link sign-in email. */
@@ -148,11 +148,11 @@ export async function sendLoginLink(
   const { data, error } = await resend().emails.send({
     from: fromAddress(),
     to: [toEmail],
-    subject: "Your FlightFinder sign-in link",
-    text: `Sign in to FlightFinder:\n\n${url}\n\nThis link works once and expires in 15 minutes. If you didn't request it, ignore this email.`,
+    subject: "Your Notiflyer sign-in link",
+    text: `Sign in to Notiflyer:\n\n${url}\n\nThis link works once and expires in 15 minutes. If you didn't request it, ignore this email.`,
     html: `
       <div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:480px;margin:0 auto;color:#111;">
-        <h2 style="margin:0 0 12px;">Sign in to FlightFinder</h2>
+        <h2 style="margin:0 0 12px;">Sign in to Notiflyer</h2>
         <p style="margin:0 0 20px;color:#444;">Click the button below. The link works once and expires in 15 minutes.</p>
         <p style="margin:0 0 24px;">
           <a href="${url}" style="background:#1a63d8;color:#fff;padding:11px 18px;border-radius:8px;text-decoration:none;font-weight:600;">Sign in</a>

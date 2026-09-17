@@ -117,7 +117,7 @@ export default function PriceChart({ points, budgetUsd, averageUsd }: Props) {
             x2={W - PAD.r}
             y1={y(averageUsd)}
             y2={y(averageUsd)}
-            stroke="var(--muted)"
+            stroke="var(--muted-card)"
             strokeWidth={1.5}
             strokeDasharray="4 3"
           />
@@ -137,7 +137,7 @@ export default function PriceChart({ points, budgetUsd, averageUsd }: Props) {
         )}
 
         {/* price line */}
-        <path d={`M${path}`} fill="none" stroke="var(--accent)" strokeWidth={2} />
+        <path d={`M${path}`} fill="none" stroke="var(--pink)" strokeWidth={2} />
 
         {/* points */}
         {coords.map((c, i) => (
@@ -146,7 +146,7 @@ export default function PriceChart({ points, budgetUsd, averageUsd }: Props) {
             cx={c.cx}
             cy={c.cy}
             r={c === cheapest ? 5 : 3}
-            fill={c === cheapest ? "var(--ok)" : "var(--accent)"}
+            fill={c === cheapest ? "var(--ok)" : "var(--pink)"}
             stroke="var(--card)"
             strokeWidth={1.5}
           >
@@ -160,7 +160,7 @@ export default function PriceChart({ points, budgetUsd, averageUsd }: Props) {
 
       <div className="chart-legend">
         <span>
-          <i className="dot" style={{ background: "var(--accent)" }} /> price
+          <i className="dot" style={{ background: "var(--pink)" }} /> price
         </span>
         <span>
           <i className="dot" style={{ background: "var(--ok)" }} /> cheapest seen
@@ -169,7 +169,7 @@ export default function PriceChart({ points, budgetUsd, averageUsd }: Props) {
         </span>
         {averageUsd != null && (
           <span>
-            <i className="dash" style={{ background: "var(--muted)" }} /> route
+            <i className="dash" style={{ background: "var(--muted-card)" }} /> route
             average · ${Math.round(averageUsd)}
           </span>
         )}

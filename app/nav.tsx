@@ -1,28 +1,20 @@
 import Link from "next/link";
 
-export default function Nav({ email }: { email: string | null }) {
+export default function Nav() {
   return (
     <header className="nav">
       <div className="nav-inner">
-        <Link href={email ? "/dashboard" : "/"} className="nav-brand">
-          Flight<span>Finder</span>
+        <Link href="/dashboard" className="nav-brand">
+          Notif<span>lyer</span>
         </Link>
-        <nav className="nav-links">
-          {email ? (
-            <>
-              <Link href="/dashboard">Dashboard</Link>
-              <Link href="/settings">Settings</Link>
-              <span className="nav-email">{email}</span>
-              <form action="/api/auth/logout" method="post">
-                <button type="submit" className="nav-signout">
-                  Sign out
-                </button>
-              </form>
-            </>
-          ) : (
-            <Link href="/login">Sign in</Link>
-          )}
-        </nav>
+        <a
+          className="nav-back"
+          href="https://svej.org"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          svej.org <span aria-hidden="true">↗</span>
+        </a>
       </div>
     </header>
   );

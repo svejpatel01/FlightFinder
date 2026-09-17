@@ -1,6 +1,12 @@
-// Read model for the logged-in dashboard: the latest known price for every
-// route + weekend this user watches, plus how it compares to the rolling
-// average and the user's budget.
+// Read model for a logged-in, per-user dashboard: the latest known price for
+// every route + weekend a user watches, plus how it compares to the rolling
+// average and their budget.
+//
+// Currently unused — the public dashboard (app/dashboard/page.tsx) shows
+// static sample data from lib/dummyData.ts instead, since live scanning is
+// off (see README). Kept here, still wired to the real schema, in case live
+// pricing comes back; DashboardRow/DashboardData are also reused as the
+// shape for the static sample data.
 
 import { prisma } from "./db";
 import { generateWeekendDatePairs } from "./weekends";

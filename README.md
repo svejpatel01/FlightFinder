@@ -1,16 +1,44 @@
-# FlightFinder — weekend flight deal watcher
+# Notiflyer — weekend flight deal watcher
 
-A multi-user, invite-only web app that watches cheap round-trip weekend flights
-between each user's home airports and a wishlist of destinations, and **emails**
-them when a fare drops **below budget** or **well below its recent average**. A
-logged-in **dashboard** shows the current cheapest fares per weekend.
+A public dashboard demonstrating a weekend-flight-deal watcher. **Live
+scanning is currently switched off** — see "Why the data is static" below —
+so the dashboard shows fixed **sample data**, clearly labeled by a banner,
+instead of real fares. No sign-in is required to view it.
 
 - **Next.js 16** (App Router, TypeScript)
-- **SQLite via Prisma** — one file, no external DB
-- **Passwordless auth** — magic link emailed via Resend (invite-only allowlist)
-- **Flight price search** — via [`fli`](https://github.com/punitarani/fli) (vendored in `lib/fli/`), which talks directly to Google Flights' own frontend API. No key, no account, no per-search cost — see the caveats below.
-- **Resend** — magic-link + digest email
-- **node-cron** — one scan every 6 hours, covering all users
+- **SQLite via Prisma** — one file, no external DB (still used by the dormant
+  auth/scan machinery below)
+- Dormant, still in the codebase but not part of the live flow: **passwordless
+  auth** (magic link via Resend, invite-only allowlist), a **flight price
+  search** integration via [`fli`](https://github.com/punitarani/fli)
+  (vendored in `lib/fli/`), **Resend** digest email, and a **node-cron**
+  scan job.
+
+---
+
+## Why the data is static
+
+Two things killed live pricing, in order:
+
+1. **Duffel** (the original data source) is only free in test mode, which
+   returns fake sandbox prices. Its live mode bills **per search** once you
+   place zero bookings (this app never books) — roughly $30–180/month at this
+   app's scan volume.
+2. The free alternative, [`fli`](https://github.com/punitarani/fli) (talks
+   directly to Google Flights' internal frontend API, no key needed), broke
+   in **August 2026** when Google added a signed `X-Goog-BatchExecute-Bgr`
+   header requirement that no pure-HTTP client — including `fli`'s TypeScript
+   port — can produce. There's an unmerged, Python-only community fix, but no
+   maintained, free, working option exists right now.
+
+Rather than show a broken or fake-looking page, the dashboard shows a fixed
+set of realistic **sample numbers** (`lib/dummyData.ts`) with a banner saying
+so, and the recurring scan job that used to ping Google Flights every 6 hours
+has been stopped. If you're running your own deployment of this repo, make
+sure to **stop/disable the `cron` process** (`npm run cron`, or whatever
+systemd/pm2 service runs it) — the code no longer starts it automatically,
+but if you had it running as a long-lived service before this change, it
+keeps running until you stop it yourself.
 
 ---
 
@@ -21,15 +49,22 @@ npm install
 cp .env.example .env        # fill in values (see below)
 npx prisma migrate deploy   # create ./prisma/dev.db
 npx prisma generate
-npm run invite -- seed      # add OWNER_EMAIL to the allowlist
 npm run dev                 # http://localhost:3000
 ```
 
-Then open the app → **Sign in** → enter `OWNER_EMAIL` → click the emailed link
-(in dev the link is also returned in the API response) → **Settings** → configure
-your watch. Scans run via `npm run cron` (or one-off `npm run scan`).
+Open `http://localhost:3000` — it redirects straight to `/dashboard`, which
+is public and shows the static sample data. No sign-in, invite, or DB content
+is required just to view it.
+
+The `prisma migrate deploy` step and `DATABASE_URL` are still needed because
+the dormant auth/invite/scan code paths (below) depend on the schema existing,
+even though the live dashboard doesn't read from the DB at all right now.
 
 ### Environment (`.env`)
+
+None of these are read by the live public dashboard — they only matter if
+you're exercising the dormant auth/scan code paths directly (scripts, or the
+unlinked `/login`/`/settings` pages).
 
 | Var | Notes |
 | --- | --- |
@@ -40,13 +75,18 @@ your watch. Scans run via `npm run cron` (or one-off `npm run scan`).
 | `FLIGHTS_MIN_INTERVAL_MS` | Min gap between flight searches. Default `1500`. No published limit (there's no contract at all) — kept conservative since this is an unofficial endpoint. |
 | `FLIGHTS_MOCK` | `1` → deterministic fake prices, no network. |
 | `RESEND_API_KEY` | From resend.com. Also sends the sign-in link. |
-| `EMAIL_FROM` | Until you verify a domain in Resend, `FlightFinder <onboarding@resend.dev>` — which **only delivers to your own Resend account address**. |
+| `EMAIL_FROM` | Until you verify a domain in Resend, `Notiflyer <onboarding@resend.dev>` — which **only delivers to your own Resend account address**. |
 | `EMAIL_MOCK` | `1` → log digest emails instead of sending. |
 | `SCAN_CRON` | Scan schedule. Default `0 */6 * * *`. |
 
 ---
 
-## Accounts & invites
+## Accounts & invites (dormant)
+
+Not part of the current public site — `/login` and `/settings` still exist
+and work if you visit them directly, but nothing links to them anymore, and
+the dashboard no longer requires signing in. Kept in case per-user accounts
+come back along with live pricing.
 
 Sign-in is **invite-only**. An email can request a sign-in link only if it has an
 `Invite` row (or is already a user).
@@ -64,7 +104,11 @@ hashes.
 
 ---
 
-## Flight search: `fli` and what that trade-off actually means
+## Flight search: `fli` and what that trade-off actually means (dormant)
+
+Not called by anything right now — see "Why the data is static" above. Left
+in place, unmodified, as the most complete write-up of why it stopped working
+and what it would take to bring it back.
 
 Price data comes from [`fli`](https://github.com/punitarani/fli) (MIT
 licensed), vendored directly into `lib/fli/` — its TypeScript port isn't
@@ -102,6 +146,10 @@ searches return `null` and are skipped, they don't crash the run.
 
 ## Scripts
 
+Everything below except `dev`/`build`/`start`/`typecheck`/`test` belongs to
+the dormant scan/email/invite machinery — none of it runs automatically
+anymore (no cron process is started by this repo).
+
 | Command | What it does |
 | --- | --- |
 | `npm run dev` | Dev server |
@@ -121,9 +169,9 @@ searches return `null` and are skipped, they don't crash the run.
 
 ---
 
-## How the scan works
+## How the scan works (dormant)
 
-Each run (`lib/scan.ts`):
+Not currently run. Each run (`lib/scan.ts`) used to work like this:
 
 1. Loads every `scanEnabled`, fully-configured user.
 2. Builds the **global unique** search set across all users.
@@ -163,10 +211,13 @@ requested and stored in USD.
 
 ## Deploying
 
-Single Node host (not Vercel — SQLite needs a real disk). Run `npm run start`
-(web) and `npm run cron` (scanner) under systemd/pm2. Put a reverse proxy
-(Caddy) in front for HTTPS. `APP_URL` must be the real public URL or magic links
-break. See the deployment runbook you were given for the full GCP walkthrough.
+Single Node host (not Vercel — SQLite needs a real disk). Run **only**
+`npm run start` (web) under systemd/pm2 — do **not** run `npm run cron`; it
+would just re-attempt live searches through the broken/paid data sources
+described above for no benefit. If you deployed this before the static-data
+change and already have a cron service running, stop and disable it. Put a
+reverse proxy (Caddy) in front for HTTPS. See the deployment runbook you were
+given for the full GCP walkthrough.
 
 ---
 
